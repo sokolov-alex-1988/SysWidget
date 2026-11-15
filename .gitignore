@@ -1,0 +1,27 @@
+# build and local output
+*.zip
+*.pdb
+*.obj
+*.tmp
+*.log
+backup/
+SysWidget-*-portable/
+
+# user data (never publish)
+portable.flag
+state.json
+alerts.json
+window.json
+dashboard.json
+prefs.json
+traffic.json
+periph.json
+net.json
+history.txt
+error.log
+
+# editors / OS
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
