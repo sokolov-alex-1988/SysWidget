@@ -12,12 +12,12 @@
 
 - **Карточка** с живыми значениями ОЗУ, ЦП, каждого физического диска (SSD/HDD), ГП, сети и периферии. Любую строку можно скрыть.
 - **Топ процессов** по клику на строку: кто грузит ЦП, память, диск, ГП или сеть; процесс можно завершить (с подтверждением).
-- **Окно мониторинга** («▦»): графики за 2 мин, 15 мин, 1 час и 24 часа (история хранится на диске и переживает перезапуск).
+- **Окно мониторинга** («▦»): общая картина сразу, без выбора действий. Слева «Состояние ПК» (обновления, свободное место, диски, автозагрузка, ошибки системы, время работы, утечки памяти) и кнопки «Очистить кэши», «Освободить память», «Диспетчер задач», «Центр обновления»; справа значения всех метрик и общий график за 2 мин, 15 мин, 1 час или 24 часа (история хранится на диске и переживает перезапуск); ниже карточки метрик, события Windows, журнал тревог и автозагрузка. В шапке колокольчик оповещений, время и дата. Оформление берётся из темы, как у карточки; на маленьком экране окно убирает второстепенное и не прячет карточки метрик и кнопки.
 - **Вердикт «почему тормозит»**: одна фраза с виновником («Процессор загружен (81%): chrome — 40%») и кнопка «Закрыть».
 - **Освобождение памяти** («⚡»): не трогает активное окно, подсказывает, кто держит больше всего памяти.
 - **Оповещения** о перегрузке, тихие часы, значок в трее, счётчики трафика.
 - **Диагностика** в настройках: автозагрузка, крупные папки, события Windows, очистка временных файлов.
-- Темы: неон, тёмная, светлая. Языки: русский и английский.
+- Темы: неон, тёмная, светлая, пиксель-арт, терминал. Языки: русский и английский.
 
 ### Требования
 
@@ -60,12 +60,12 @@ SDK не нужен, достаточно встроенного в Windows ко
 
 - **Card** with live RAM, CPU, every physical disk (SSD/HDD), GPU, network and peripherals. Any row can be hidden.
 - **Top processes** on click: what loads the CPU, memory, disk, GPU or network; a process can be ended (with confirmation).
-- **Monitoring window** (“▦”): graphs for 2 min, 15 min, 1 hour and 24 hours (history is stored on disk and survives restarts).
+- **Monitoring window** (“▦”): the whole picture at a glance, no choices to make. “PC health” on the left (updates, free space, disks, startup items, system errors, uptime, memory leaks) with buttons “Clean caches”, “Free memory”, “Task Manager”, “Windows Update”; on the right the values of every metric and one combined graph for 2 min, 15 min, 1 hour or 24 hours (history is stored on disk and survives restarts); below are metric cards, Windows events, an alert log and startup items. The header has an alerts bell, the time and the date. The look comes from the theme, like the card; on a small screen the window drops the secondary parts and never hides the metric cards or the buttons.
 - **“Why is it slow” verdict**: one sentence naming the culprit (“CPU is busy (81%): chrome — 40%”) and a “Close” button.
 - **Memory release** (“⚡”): leaves the active window alone and tells you who holds the most memory.
 - **Alerts** on overload, quiet hours, tray icon, traffic counters.
 - **Diagnostics** in settings: startup items, big folders, Windows events, temp-file cleanup.
-- Themes: neon, dark, light. Languages: Russian and English.
+- Themes: neon, dark, light, pixel art, terminal. Languages: Russian and English.
 
 ### Requirements
 

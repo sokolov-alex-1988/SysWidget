@@ -25,6 +25,8 @@ namespace SysWidget
         public static bool Neon = true;
         public static bool ShowDashBtn = true;   // кнопка окна мониторинга на карточке
         public static bool Light = false;        // светлая тема; действует, только если Neon выключен
+        public static bool Retro = false;        // пиксель-арт; действует, только если Neon выключен
+        public static bool Terminal = false;         // тема «Терминал»; действует, только если выключены Neon и Retro
         public static int Density = 0;           // 0 компактно, 1 обычно, 2 свободно
         public static double FontScale = 1.0;    // 0.9 … 1.2
         public static string AccRam = "", AccCpu = "", AccSsd = "", AccHdd = "",
@@ -46,7 +48,7 @@ namespace SysWidget
         {
             return string.Join("|", new string[]
             {
-                Neon ? "n" : "d", Light ? "l" : "-", Density.ToString(Inv), FontScale.ToString("0.00", Inv),
+                Neon ? "n" : "d", Light ? "l" : "-", Retro ? "r" : "-", Terminal ? "b" : "-", Density.ToString(Inv), FontScale.ToString("0.00", Inv),
                 AccRam, AccCpu, AccSsd, AccHdd, AccGpu, AccNet, AccWarn
             });
         }
@@ -80,6 +82,8 @@ namespace SysWidget
         {
             Neon = Bool(t, "Neon", Neon);
             Light = Bool(t, "Light", Light);
+            Retro = Bool(t, "Retro", Retro);
+            Terminal = Bool(t, "Terminal", Terminal);
             ShowDashBtn = Bool(t, "ShowDashBtn", ShowDashBtn);
             Density = Int(t, "Density", Density);
             FontScale = Dbl(t, "FontScale", FontScale);
@@ -125,11 +129,11 @@ namespace SysWidget
                 "\"AccRam\":\"{3}\",\"AccCpu\":\"{4}\",\"AccSsd\":\"{5}\",\"AccHdd\":\"{6}\"," +
                 "\"AccGpu\":\"{7}\",\"AccNet\":\"{8}\",\"AccWarn\":\"{9}\"," +
                 "\"Opacity\":{10:0.00},\"FadeIdle\":{11},\"HideLabels\":{12},\"ColorByLoad\":{13}," +
-                "\"WarnAt\":{14},\"CritAt\":{15},\"ShowSsid\":{16},\"TrafficLimitGB\":{17},\"Light\":{18},\"ShowDashBtn\":{19}}}",
+                "\"WarnAt\":{14},\"CritAt\":{15},\"ShowSsid\":{16},\"TrafficLimitGB\":{17},\"Light\":{18},\"ShowDashBtn\":{19},\"Retro\":{20},\"Terminal\":{21}}}",
                 B(Neon), Density, FontScale,
                 AccRam, AccCpu, AccSsd, AccHdd, AccGpu, AccNet, AccWarn,
                 Opacity, B(FadeIdle), B(HideLabels), B(ColorByLoad),
-                WarnAt, CritAt, B(ShowSsid), TrafficLimitGB, B(Light), B(ShowDashBtn));
+                WarnAt, CritAt, B(ShowSsid), TrafficLimitGB, B(Light), B(ShowDashBtn), B(Retro), B(Terminal));
         }
 
         public static void Save()
@@ -145,12 +149,12 @@ namespace SysWidget
         /// <summary>Вернуть всё к значениям по умолчанию (тему оставляем как выбрана).</summary>
         public static void Reset()
         {
-            bool neon = Neon, light = Light;
+            bool neon = Neon, light = Light, retro = Retro, terminal = Terminal;
             Density = 0; FontScale = 1.0;
             AccRam = AccCpu = AccSsd = AccHdd = AccGpu = AccNet = AccWarn = "";
             Opacity = 1.0; FadeIdle = false; HideLabels = false; ColorByLoad = false; WarnAt = 70; CritAt = 90;
             ShowSsid = false;
-            Neon = neon; Light = light;
+            Neon = neon; Light = light; Retro = retro; Terminal = terminal;
         }
 
         static string B(bool v) { return v ? "true" : "false"; }

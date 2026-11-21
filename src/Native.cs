@@ -41,6 +41,17 @@ namespace SysWidget
             catch { return false; }
         }
 
+        /// <summary>Окно с квадратными углами (DWMWCP_DONOTROUND): для пиксельной темы и «Терминала» Windows 11 не должна скруглять.</summary>
+        public static void SquareCorners(IntPtr hwnd)
+        {
+            try
+            {
+                int pref = 1;                                           // DWMWCP_DONOTROUND
+                DwmSetWindowAttribute(hwnd, 33, ref pref, 4);
+            }
+            catch { }
+        }
+
         [DllImport("user32.dll")]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 

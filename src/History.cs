@@ -253,6 +253,36 @@ namespace SysWidget
                     p[idx] = vm;
                 }
             }
+            SeedShort();
+        }
+
+        /// <summary>
+        /// После перезапуска заполняет секундное кольцо (графики за 2 и 15 минут) сохранёнными минутами: каждая минута —
+        /// 60 точек её среднего значения. Только если виджет не работал не дольше двух минут — иначе график показал бы
+        /// старую картину как свежую. Последняя сохранённая минута — законченная; недописанная при выходе теряется.
+        /// </summary>
+        void SeedShort()
+        {
+            if (_count > 0) return;
+            long now = NowMinute(), last = 0;
+            for (int i = 0; i < LongMinutes; i++)
+                if (_stamp[i] > last && _stamp[i] <= now) last = _stamp[i];
+            if (last == 0 || now - last > 2) return;
+            var mins = new List<long>();
+            for (long mm = last; mins.Count < Capacity / 60 && _stamp[(int)(mm % LongMinutes)] == mm; mm--) mins.Insert(0, mm);
+            if (mins.Count == 0) return;
+            foreach (KeyValuePair<int, float[]> kv in _lAvg)
+            {
+                double[] b = Buf(kv.Key);
+                int pos = 0;
+                foreach (long mm in mins)
+                {
+                    float v = kv.Value[(int)(mm % LongMinutes)];
+                    for (int k = 0; k < 60; k++) b[pos++] = float.IsNaN(v) ? 0 : v;
+                }
+            }
+            _count = mins.Count * 60;
+            _head = _count % Capacity;
         }
 
         public static double Max(double[] v)

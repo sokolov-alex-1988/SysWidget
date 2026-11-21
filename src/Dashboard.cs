@@ -62,21 +62,34 @@ namespace SysWidget
     /// когда нужно видеть больше: график за 2 минуты, 15 минут, час или сутки,
     /// значение и время под курсором, подробности из тех же текстов, что в плашках.
     /// </summary>
-    public sealed class Dashboard
+    public sealed partial class Dashboard
     {
         static readonly IFormatProvider Inv = CultureInfo.InvariantCulture;
 
         const double DefW = 920, DefH = 660, MinW = 700, MinH = 280;   // высоту дальше ведёт UpdateMinHeight
 
-        sealed class Tile
+        // --- оформление окна целиком берётся из Theme: цвета, шрифты, радиусы и рамки те же,
+        // что у карточки виджета, плашек и настроек, поэтому окно выглядит так же в неоне,
+        // в тёмной и в светлой темах. Здесь только короткие имена для частых значений.
+        static string cWin { get { return Theme.Bg; } }
+        static string cWinTop { get { return Theme.BgTop; } }              // фон окна — тот же градиент, что у карточки
+        static string cWinBottom { get { return Theme.BgBottom; } }
+        static string cFrame { get { return Theme.CardStroke; } }          // рамка окна
+        static string cEdge { get { return Theme.GroupStroke; } }          // рамки блоков, как у строк карточки
+        static string cCard { get { return Theme.Surface; } }              // заливка блоков, как у плашек
+        static string cHi { get { return Theme.TextHi; } }
+        static string cMid { get { return Theme.TextMid; } }
+        static string cLabel { get { return Theme.TextLabel; } }
+        static string cAccent { get { return Theme.Accent; } }             // заголовки, активные вкладки, колокольчик
+        static string cOk { get { return Theme.OkColor; } }                // «всё в порядке»
+
+        static Brush Vertical(string top, string bottom)
         {
-            public Border Root;
-            public TextBlock Title, Value, Unit, Note, Detail, AxisL, AxisM, AxisR;
-            public Border Bar;
-            public Panel SparkHost;         // где стоит график: средняя колонка
-            public Sparkline Spark;
-            public CoreBars Cores;
-            public DashTileData Data;       // последние показанные данные — для подсказки под курсором
+            var b = new LinearGradientBrush(
+                (Color)ColorConverter.ConvertFromString(top),
+                (Color)ColorConverter.ConvertFromString(bottom), 90);
+            b.Freeze();
+            return b;
         }
 
         readonly Widget _w;
@@ -85,7 +98,8 @@ namespace SysWidget
         Window _win;
         ScrollViewer _scroll;
         Panel _host;
-        readonly List<Tile> _tiles = new List<Tile>();
+        bool _fitAuto = true;      // высоту ведёт содержимое, пока окно не меняли мышью
+        double _lastAutoH;         // последняя высота, выставленная подгонкой: от неё отличаем ручное изменение
 
         int _period;       // период графика: 0 — 2 мин, 1 — 15 мин, 2 — 1 ч, 3 — 24 ч
         // положение — в физических пикселях экрана, как у окна настроек: так оно не зависит
@@ -152,7 +166,7 @@ namespace SysWidget
             _win.WindowStyle = WindowStyle.None;
             _win.ResizeMode = ResizeMode.CanResize;
             _win.ShowInTaskbar = false;      // открывается кнопкой на карточке или из трея, отдельный значок на панели задач не нужен
-            _win.Background = Theme.B(Theme.Bg);
+            _win.Background = Theme.B(cWin);
             _win.MinWidth = MinW;
             _win.MinHeight = MinH;
             _win.Width = _width;
@@ -185,22 +199,30 @@ namespace SysWidget
             _win.Top = -20000;
 
             var frame = new Border();
-            frame.BorderBrush = Theme.B(Theme.CardStroke);
+            frame.BorderBrush = Theme.B(cFrame);
             frame.BorderThickness = new Thickness(1);
+            frame.Background = Vertical(cWinTop, cWinBottom);
 
             // Windows 11: скруглённые углы и рамка по скруглению от самой системы;
             // собственная прямоугольная рамка в углах рвалась. Где система этого не умеет
             // (Windows 10), остаётся наша прямоугольная рамка.
             _win.SourceInitialized += delegate
             {
-                Color stroke = (Color)ColorConverter.ConvertFromString(Theme.CardStroke);
-                Color bg = (Color)ColorConverter.ConvertFromString(Theme.Bg);
+                Color stroke = (Color)ColorConverter.ConvertFromString(cFrame);
+                Color bg = (Color)ColorConverter.ConvertFromString(cWin);
                 double a = stroke.A / 255.0;
                 int r = (int)Math.Round(stroke.R * a + bg.R * (1 - a));
                 int g = (int)Math.Round(stroke.G * a + bg.G * (1 - a));
                 int bl = (int)Math.Round(stroke.B * a + bg.B * (1 - a));
-                if (Native.RoundCorners(new WindowInteropHelper(_win).Handle, r | (g << 8) | (bl << 16)))
+                // пиксельная тема и «Терминал»: углы окна квадратные, рамку рисуем сами; иначе скругление и рамку даёт DWM
+                IntPtr hw = new WindowInteropHelper(_win).Handle;
+                if (Theme.Retro || Theme.Terminal) Native.SquareCorners(hw);
+                else if (Native.RoundCorners(hw, r | (g << 8) | (bl << 16)))
                     frame.BorderThickness = new Thickness(0);
+
+                // размеры окна при разворачивании на весь экран задаём сами (см. MaxHook)
+                HwndSource src = HwndSource.FromHwnd(new WindowInteropHelper(_win).Handle);
+                if (src != null) src.AddHook(MaxHook);
             };
 
             var shell = new Grid();
@@ -211,7 +233,7 @@ namespace SysWidget
             // под заголовком — тонкая линия: при прокрутке плитки уходят под неё,
             // а не обрезаются вплотную к чипам
             var headBox = new StackPanel();
-            headBox.Children.Add(BuildHeader());
+            headBox.Children.Add(BuildHeaderDl());
             var sep = new Border();
             sep.Height = 1;
             sep.Background = Theme.B(Theme.StrokeSoft);
@@ -226,7 +248,9 @@ namespace SysWidget
             _scroll = new ScrollViewer();
             _scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
             _scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-            _scroll.Padding = new Thickness(14, 8, 4, 4);
+            // поля уходят в отступ панели блоков, а не области прокрутки —
+            // иначе она обрезала бы края блоков у самой границы
+            _scroll.Padding = new Thickness(0, 0, 4, 0);
             _scroll.Focusable = false;
             _scroll.Resources.Add(typeof(System.Windows.Controls.Primitives.ScrollBar), SettingsWindow.ScrollBarStyle());
             _scroll.SizeChanged += delegate { ScheduleFit(); };
@@ -237,8 +261,8 @@ namespace SysWidget
             fade.IsHitTestVisible = false;
             fade.Margin = new Thickness(0, 0, 10, 0);       // справа оставляем полосу прокрутки
             fade.Fill = new LinearGradientBrush(
-                (Color)ColorConverter.ConvertFromString(Theme.Bg),
-                (Color)ColorConverter.ConvertFromString(Theme.Fade(Theme.Bg, 0)),
+                (Color)ColorConverter.ConvertFromString(cWinTop),
+                (Color)ColorConverter.ConvertFromString(Theme.Fade(cWinTop, 0)),
                 90);
 
             var body = new Grid();
@@ -252,63 +276,41 @@ namespace SysWidget
 
             _win.KeyDown += delegate(object s, KeyEventArgs e) { if (e.Key == Key.Escape) Hide(); };
             _win.Closing += delegate { Save(); };      // пока окно живо, положение ещё можно прочитать
-            _win.Closed += delegate { _win = null; _tiles.Clear(); _vSampler = null; _vProcs = null; _vKey = null; };
+            _win.SizeChanged += delegate(object s, SizeChangedEventArgs e)
+            {
+                // высота изменилась не нами — пользователь тянет край: подгонку выключаем
+                if (_fitAuto && e.HeightChanged && _lastAutoH > 0 && Math.Abs(e.NewSize.Height - _lastAutoH) > 3)
+                    _fitAuto = false;
+            };
+
+            // Окно без рамки при разворачивании на весь экран выходит за рабочую область на толщину
+            // невидимой рамки (около 9 пикселей с каждой стороны): край содержимого оказывался за экраном.
+            // Возвращаем его внутрь полем, равным измеренному выходу.
+            _win.StateChanged += delegate
+            {
+                if (_win.WindowState != WindowState.Maximized) { frame.Margin = new Thickness(0); return; }
+                _win.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
+                {
+                    try
+                    {
+                        IntPtr hh = new WindowInteropHelper(_win).Handle;
+                        Native.RECT pr;
+                        Native.RECT wa = new Native.RECT();
+                        if (!Native.GetWindowRect(hh, out pr)) return;
+                        if (!Native.GetWorkAreaAt(pr.Left + pr.Width / 2, pr.Top + pr.Height / 2, out wa)) return;
+                        double k = VisualTreeHelper.GetDpi(_win).DpiScaleX;
+                        if (k <= 0) k = 1;
+                        frame.Margin = new Thickness(
+                            Math.Max(0, wa.Left - pr.Left) / k, Math.Max(0, wa.Top - pr.Top) / k,
+                            Math.Max(0, pr.Right - wa.Right) / k, Math.Max(0, pr.Bottom - wa.Bottom) / k);
+                    }
+                    catch (Exception ex) { ErrorLog.Write("dashboard maximize margin", ex); }
+                });
+            };
+            _win.Closed += delegate { StopClock(); _win = null; _vSampler = null; _vProcs = null; _vKey = null; };
 
             UpdateChips();
-            BuildTiles();
-        }
-
-        FrameworkElement BuildHeader()
-        {
-            var grid = new Grid();
-            grid.Background = Brushes.Transparent;      // чтобы принимать мышь по всей полосе
-            grid.Margin = new Thickness(14, 10, 10, 8);
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _head = grid;
-
-            _title = new TextBlock();
-            _title.Text = Lang.S("Мониторинг", "Monitor");
-            _title.FontFamily = new FontFamily(Theme.FontUi);
-            _title.FontSize = Theme.Fs(12);
-            _title.FontWeight = FontWeights.SemiBold;
-            _title.Foreground = Theme.B(Theme.TextHi);
-            _title.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(_title, 0);
-            grid.Children.Add(_title);
-
-            var chips = new StackPanel();
-            chips.Orientation = Orientation.Horizontal;
-            Grid.SetColumn(chips, 1);
-
-            string[] labels = { Lang.S("2 мин", "2 min"), Lang.S("15 мин", "15 min"), Lang.S("1 ч", "1 h"), Lang.S("24 ч", "24 h") };
-            for (int i = 0; i < 4; i++)
-            {
-                int period = i;
-                _chips[i] = Chip(labels[i], delegate { SetPeriod(period); }, out _chipTexts[i]);
-                chips.Children.Add(_chips[i]);
-            }
-
-            TextBlock closeText;
-            Border close = Chip("✕", delegate { Hide(); }, out closeText);
-            close.Margin = new Thickness(14, 0, 0, 0);
-            closeText.FontSize = Theme.Fs(11);
-            chips.Children.Add(close);
-            grid.Children.Add(chips);
-
-            // окно без рамки — тащим за свободное место полосы
-            grid.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
-            {
-                if (!ReferenceEquals(e.OriginalSource, grid) && !ReferenceEquals(e.OriginalSource, _title)) return;
-                if (e.ClickCount > 1)
-                {
-                    _win.WindowState = _win.WindowState == WindowState.Maximized
-                        ? WindowState.Normal : WindowState.Maximized;
-                    return;
-                }
-                try { _win.DragMove(); } catch { }
-            };
-            return grid;
+            BuildBodyDl();
         }
 
         /// <summary>Чип в стиле окна настроек: мягкая заливка, при наведении — рамка.</summary>
@@ -318,7 +320,7 @@ namespace SysWidget
             t.Text = label;
             t.FontFamily = new FontFamily(Theme.FontUi);
             t.FontSize = Theme.Fs(10.5);
-            t.Foreground = Theme.B(Theme.TextMid);
+            t.Foreground = Theme.B(cMid);
             t.VerticalAlignment = VerticalAlignment.Center;
 
             var b = new Border();
@@ -368,25 +370,68 @@ namespace SysWidget
             Save();
         }
 
+        // ------------------------------------------------------------ разворачивание
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct MmPoint { public int X, Y; }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct MinMaxInfo
+        {
+            public MmPoint Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize;
+        }
+
+        /// <summary>
+        /// Окно без рамки WPF разворачивает с выходом за рабочую область (на 9 пикселей влево и
+        /// вверх, а по высоте на столько же не доходит до низа), и снизу оставалась полоса. Размер и
+        /// место развёрнутого окна задаём точно по рабочей области монитора, на котором оно стоит.
+        /// </summary>
+        static IntPtr MaxHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_GETMINMAXINFO = 0x0024;
+            if (msg != WM_GETMINMAXINFO) return IntPtr.Zero;
+            try
+            {
+                IntPtr mon = Native.MonitorFromWindow(hwnd, Native.MONITOR_DEFAULTTONEAREST);
+                var mi = new Native.MONITORINFO();
+                mi.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.MONITORINFO));
+                if (mon == IntPtr.Zero || !Native.GetMonitorInfo(mon, ref mi)) return IntPtr.Zero;
+
+                var mmi = (MinMaxInfo)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(MinMaxInfo));
+                mmi.MaxPosition.X = mi.rcWork.Left - mi.rcMonitor.Left;
+                mmi.MaxPosition.Y = mi.rcWork.Top - mi.rcMonitor.Top;
+                mmi.MaxSize.X = mi.rcWork.Width;
+                mmi.MaxSize.Y = mi.rcWork.Height;
+                System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
+                handled = true;
+            }
+            catch { }
+            return IntPtr.Zero;
+        }
+
         // ------------------------------------------------------------ строки
 
-        void BuildTiles()
+        /// <summary>
+        /// Высота рабочей области того монитора, где окно стоит (или будет стоять), в DIP.
+        /// SystemParameters.WorkArea — это всегда основной монитор: у второго экрана другая
+        /// высота и масштаб, и потолок окна получался слишком низким.
+        /// </summary>
+        double WorkHeightDip()
         {
-            _tiles.Clear();
-            var sp = new StackPanel();
-            sp.Orientation = Orientation.Vertical;
-            _host = sp;
-            _scroll.Content = _host;
-            if (_win != null) _win.MinWidth = MinW;
-
-            int n = _w.DashSlots;
-            for (int i = 0; i < n; i++)
+            try
             {
-                Tile t = MakeTile();
-                _tiles.Add(t);
-                _host.Children.Add(t.Root);
+                Native.RECT wa = new Native.RECT();
+                bool ok = _hasPos
+                    ? Native.GetWorkAreaAt(_posX + 50, _posY + 50, out wa)
+                    : Native.GetWorkArea(_w.Handle, out wa);
+                if (ok && wa.Height > 0)
+                {
+                    double s = VisualTreeHelper.GetDpi(_win).DpiScaleY;
+                    return Math.Floor(wa.Height / (s > 0 ? s : 1));
+                }
             }
-            ScheduleFit();
+            catch { }
+            return SystemParameters.WorkArea.Height;
         }
 
         /// <summary>Пересчитать высоту окна после раскладки: высота строк зависит от переносов текста.</summary>
@@ -404,20 +449,71 @@ namespace SysWidget
         /// </summary>
         void UpdateMinHeight()
         {
-            if (_win == null || _scroll == null || _tiles.Count == 0) return;
+            if (_win == null || _scroll == null || _host == null) return;
 
             // отступы области прокрутки (8 сверху, 4 снизу)
             double chrome = _win.ActualHeight - _scroll.ActualHeight;
-            double rows = 0;
-            for (int i = 0; i < _tiles.Count; i++)
-                rows += _tiles[i].Root.ActualHeight + _tiles[i].Root.Margin.Top + _tiles[i].Root.Margin.Bottom;
-            if (rows <= 20) return;                         // ещё не измерены
+            if (_host != null)
+            {
+                // Высота свободная. Пока окно не меняли мышью, оно подстраивается под
+                // содержимое (не выше рабочей области), чтобы ничего не пряталось: списки внизу
+                // заполняются не сразу. После ручного изменения высоты (и на весь экран) подгонка
+                // высоты выключается, но плотность вида (ApplyDensity) продолжает следить за местом:
+                // не помещается — убираем второстепенное, места стало больше — возвращаем.
+                // DesiredSize — высота содержимого без растяжения.
+                double need = _host.DesiredSize.Height;
+                if (need <= 20) return;                     // ещё не измерены
+                if (_win.WindowState == WindowState.Minimized) return;
+                if (_win.WindowState != WindowState.Normal) _fitAuto = false;
+                double wa = WorkHeightDip();
+                _win.MinHeight = MinH;
+                _win.MaxHeight = wa;
 
-            double content = Math.Ceiling(chrome + rows + 12);
-            double target = Math.Max(160, Math.Min(content, SystemParameters.WorkArea.Height));
-            _win.MinHeight = target;
-            _win.MaxHeight = target;
-            if (Math.Abs(_win.Height - target) > 1) _win.Height = target;
+                double view = _scroll.ActualHeight;         // место под содержимое сейчас
+                if (view <= 50) return;
+
+                // Строка вердикта лежит вне области прокрутки: при её скрытии освобождается место, а при
+                // возврате пропадает. Поэтому сравниваем полную высоту окна (шапка + вердикт + содержимое),
+                // а не только область прокрутки, иначе вид «мигает»: убрали — влезло — вернули — не влезло.
+                bool vShown = _vBox != null && _vBox.Visibility == Visibility.Visible;
+                if (vShown && _vBox.ActualHeight > 0) _vH = _vBox.ActualHeight + _vBox.Margin.Top + _vBox.Margin.Bottom;
+                double head = chrome - (vShown ? _vH : 0);
+                double total = need + head + (_density < 1 ? _vH : 0);      // сколько высоты окну нужно на этом уровне
+                double availT = _fitAuto ? wa : _win.ActualHeight;          // пока высоту ведёт подгонка — вся рабочая область
+                _totAt[_density] = total;
+                _totW[_density] = _win.ActualWidth;      // при другой ширине текст переносится иначе, и замер устаревает
+                if (total > availT + 1 && _density < 4)
+                {
+                    _density++;
+                    _escAvail = availT;
+                    ApplyDensity();
+                    ScheduleFit();
+                    return;
+                }
+                // вернуть убранное можно, только если места стало больше, чем когда его убрали (развернули окно,
+                // перенесли на большой монитор), и прежний уровень с запасом помещается — иначе вид дёргается.
+                // Замер прежнего уровня мог устареть (окно было уже, текст переносился и занимал больше места):
+                // тогда пробуем вернуть уровень и смотрим на результат; не поместилось — _escAvail снова запомнит это место,
+                // и новых попыток не будет, пока места не станет больше
+                if (_density > 0 && availT > _escAvail + 8
+                    && (_totAt[_density - 1] <= 0 || Math.Abs(_win.ActualWidth - _totW[_density - 1]) > 30 || _totAt[_density - 1] + 8 <= availT))
+                {
+                    _density--;
+                    ApplyDensity();
+                    ScheduleFit();
+                    return;
+                }
+                if (_fitAuto)
+                {
+                    double fit = Math.Max(MinH, Math.Min(Math.Ceiling(chrome + need), wa));      // need уже с полями панели
+                    if (Math.Abs(_win.Height - fit) > 1)
+                    {
+                        _lastAutoH = fit;
+                        _win.Height = fit;
+                    }
+                }
+                return;
+            }
         }
 
         TextBlock Small(double size, string color)
@@ -427,129 +523,6 @@ namespace SysWidget
             tb.FontSize = Theme.Fs(size);
             tb.Foreground = Theme.B(color);
             return tb;
-        }
-
-        /// <summary>
-        /// Строка метрики: слева название, значение и «за N: ср · макс», в середине график со
-        /// шкалой времени (у ЦП ещё столбики ядер), справа подробности — первая строка крупнее.
-        /// </summary>
-        Tile MakeTile()
-        {
-            var t = new Tile();
-
-            t.Root = new Border();
-            t.Root.Background = Theme.B(Theme.Surface);
-            t.Root.BorderBrush = Theme.B(Theme.GroupStroke);
-            t.Root.BorderThickness = new Thickness(1);
-            t.Root.CornerRadius = new CornerRadius(Theme.RadiusCard);
-            t.Root.Padding = new Thickness(14, 10, 14, 10);
-            t.Root.Margin = new Thickness(0, 0, 10, 8);
-
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(176) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 200 });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star), MinWidth = 220 });
-            t.Root.Child = grid;
-
-            // колонка 0: название, значение, строка «за N: ср · макс»
-            var left = new StackPanel();
-            left.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(left, 0);
-
-            var head = new StackPanel();
-            head.Orientation = Orientation.Horizontal;
-            t.Bar = new Border();
-            t.Bar.Width = 3;
-            t.Bar.Height = 13;
-            t.Bar.CornerRadius = new CornerRadius(Theme.BarRadius);
-            t.Bar.VerticalAlignment = VerticalAlignment.Center;
-            t.Bar.Margin = new Thickness(0, 0, 8, 0);
-            t.Title = Small(11.5, Theme.TextLabel);
-            t.Title.FontWeight = FontWeights.SemiBold;
-            t.Title.VerticalAlignment = VerticalAlignment.Center;
-            head.Children.Add(t.Bar);
-            head.Children.Add(t.Title);
-            left.Children.Add(head);
-
-            var val = new StackPanel();
-            val.Orientation = Orientation.Horizontal;
-            val.Margin = new Thickness(0, 3, 0, 0);
-            t.Value = Small(20, Theme.TextHi);
-            t.Value.FontFamily = new FontFamily(Theme.FontNum);
-            t.Value.FontWeight = FontWeights.SemiBold;
-            t.Value.VerticalAlignment = VerticalAlignment.Center;
-            Typography.SetNumeralAlignment(t.Value, FontNumeralAlignment.Tabular);
-            t.Unit = Small(9.5, Theme.TextMid);
-            t.Unit.VerticalAlignment = VerticalAlignment.Center;
-            t.Unit.Margin = new Thickness(5, 4, 0, 0);
-            val.Children.Add(t.Value);
-            val.Children.Add(t.Unit);
-            left.Children.Add(val);
-
-            t.Note = Small(9.5, Theme.TextMid);
-            t.Note.TextWrapping = TextWrapping.Wrap;
-            t.Note.Margin = new Thickness(0, 3, 8, 0);
-            left.Children.Add(t.Note);
-            grid.Children.Add(left);
-
-            // колонка 1: график (создаётся в EnsureSpark), под ним шкала времени, у ЦП — ядра
-            var mid = new StackPanel();
-            mid.VerticalAlignment = VerticalAlignment.Center;
-            mid.Margin = new Thickness(0, 0, 18, 0);
-            Grid.SetColumn(mid, 1);
-            t.SparkHost = mid;
-
-            var axis = new Grid();
-            axis.Margin = new Thickness(0, 3, 0, 0);
-            for (int i = 0; i < 3; i++) axis.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            t.AxisL = Small(9, Theme.TextMid);
-            t.AxisM = Small(9, Theme.TextMid);
-            t.AxisM.HorizontalAlignment = HorizontalAlignment.Center;
-            t.AxisR = Small(9, Theme.TextMid);
-            t.AxisR.HorizontalAlignment = HorizontalAlignment.Right;
-            Grid.SetColumn(t.AxisL, 0);
-            Grid.SetColumn(t.AxisM, 1);
-            Grid.SetColumn(t.AxisR, 2);
-            axis.Children.Add(t.AxisL);
-            axis.Children.Add(t.AxisM);
-            axis.Children.Add(t.AxisR);
-            mid.Children.Add(axis);
-            grid.Children.Add(mid);
-
-            // колонка 2: подробности
-            t.Detail = Small(10.5, Theme.TextLabel);
-            t.Detail.TextWrapping = TextWrapping.Wrap;
-            t.Detail.LineHeight = Theme.Fs(10.5) * 1.45;
-            t.Detail.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
-            t.Detail.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(t.Detail, 2);
-            grid.Children.Add(t.Detail);
-            return t;
-        }
-
-        /// <summary>График и столбики ядер создаём по цвету метрики — один раз.</summary>
-        void EnsureSpark(Tile t, DashTileData d)
-        {
-            if (t.Spark == null)
-            {
-                t.Spark = new Sparkline(d.Color);
-                t.Spark.Width = double.NaN;
-                t.Spark.HorizontalAlignment = HorizontalAlignment.Stretch;
-                t.Spark.Height = 46;
-                t.Spark.MidGrid = !d.Net;
-                t.Spark.Interactive = true;
-                Tile row = t;
-                t.Spark.Describe = delegate(int i, int n) { return DescribePoint(row, i); };
-                t.SparkHost.Children.Insert(0, t.Spark);
-                t.Bar.Background = Theme.B(d.Color);
-            }
-            if (d.Cores != null && d.Cores.Length > 0 && t.Cores == null)
-            {
-                t.Cores = new CoreBars(d.Color);
-                t.Cores.Height = 14;
-                t.Cores.Margin = new Thickness(0, 6, 0, 0);
-                t.SparkHost.Children.Add(t.Cores);
-            }
         }
 
         /// <summary>Подпись момента: у коротких периодов «−45 с», у длинных — время на часах.</summary>
@@ -567,45 +540,16 @@ namespace SysWidget
             return clock;
         }
 
-        /// <summary>Текст под курсором на графике: момент, значение и (для часа и суток) пик той минуты.</summary>
-        string DescribePoint(Tile t, int i)
+        /// <summary>
+        /// Цвет значения по порогам из настроек (Warn/Crit); обычное значение — цвет самой метрики.
+        /// </summary>
+        static string SeverityColor(double pct, string metric)
         {
-            DashTileData d = t.Data;
-            if (d == null || i < 0 || i >= d.Series.Length) return null;
-            string when = When(d.Series.Length - 1 - i);
-            double v = d.Series[i];
-            if (double.IsNaN(v)) return when + "  ·  " + Lang.S("нет данных", "no data");
-            string val = d.Net
-                ? v.ToString("0.0", Inv) + Lang.S(" МБ/с", " MB/s")
-                : v.ToString("0", Inv) + "%";
-            if (d.Peaks != null && i < d.Peaks.Length && !double.IsNaN(d.Peaks[i]) && d.Peaks[i] > v + 0.5)
-                val += Lang.S("  (пик ", "  (peak ") + (d.Net ? d.Peaks[i].ToString("0.0", Inv) : d.Peaks[i].ToString("0", Inv)) + ")";
-            return when + "  ·  " + val;
-        }
-
-        /// <summary>Подписи шкалы времени под графиком.</summary>
-        void SetAxis(Tile t)
-        {
-            string l, m;
-            switch (_period)
-            {
-                case 0: l = Lang.S("−2 мин", "−2 min"); m = Lang.S("−1 мин", "−1 min"); break;
-                case 1: l = Lang.S("−15 мин", "−15 min"); m = Lang.S("−8 мин", "−8 min"); break;
-                case 2: l = Lang.S("−1 ч", "−1 h"); m = Lang.S("−30 мин", "−30 min"); break;
-                default: l = Lang.S("−24 ч", "−24 h"); m = Lang.S("−12 ч", "−12 h"); break;
-            }
-            SetText(t.AxisL, l);
-            SetText(t.AxisM, m);
-            SetText(t.AxisR, Lang.S("сейчас", "now"));
-        }
-
-        /// <summary>Цвет значения по порогам из настроек (Warn/Crit); у метрик не в процентах — обычный.</summary>
-        static string SeverityColor(double pct)
-        {
-            if (pct < 0) return Theme.TextHi;
+            string normal = metric;
+            if (pct < 0) return normal;
             if (pct >= Prefs.CritAt) return Theme.WarnColor;
             if (pct >= Prefs.WarnAt) return Theme.BattMidColor;
-            return Theme.TextHi;
+            return normal;
         }
 
         /// <summary>Подробности: первая строка — сводка, выделена цветом и весом, остальные — обычным текстом.</summary>
@@ -622,7 +566,7 @@ namespace SysWidget
                 if (i == 0 && lines.Length > 1)
                 {
                     run.FontWeight = FontWeights.SemiBold;
-                    run.Foreground = Theme.B(Theme.TextHi);
+                    run.Foreground = Theme.B(cHi);
                 }
                 tb.Inlines.Add(run);
             }
@@ -665,7 +609,7 @@ namespace SysWidget
             _vText = new TextBlock();
             _vText.FontFamily = new FontFamily(Theme.FontUi);
             _vText.FontSize = Theme.Fs(11);
-            _vText.Foreground = Theme.B(Theme.TextHi);
+            _vText.Foreground = Theme.B(cHi);
             _vText.TextWrapping = TextWrapping.Wrap;
             _vText.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(_vText);
@@ -760,10 +704,11 @@ namespace SysWidget
 
         void SetVerdictLook(int level)
         {
-            string c = level >= 2 ? Theme.WarnColor : level == 1 ? Theme.BattMidColor : Theme.RamColor;
+            string c = level >= 2 ? Theme.WarnColor : level == 1 ? Theme.BattMidColor : cOk;
             _vDot.Fill = Theme.B(c);
-            _vBox.Background = Theme.B(level == 0 ? Theme.StrokeSoft : Theme.Fade(c, 0x22));
-            _vBox.BorderBrush = level == 0 ? (Brush)Brushes.Transparent : Theme.B(Theme.Fade(c, 0x66));
+            // в норме — обычная плашка темы (заливка и рамка как у плашек), при замечаниях — цветная
+            _vBox.Background = Theme.B(level == 0 ? cCard : Theme.Fade(c, 0x22));
+            _vBox.BorderBrush = Theme.B(level == 0 ? cEdge : Theme.Fade(c, 0x66));
         }
 
         /// <summary>Замер процессов для вердикта: раз в 5 секунд в фоне, пока окно открыто.</summary>
@@ -805,37 +750,9 @@ namespace SysWidget
         public void Refresh(SysStats s)
         {
             if (_win == null || s == null) return;
-
-            // накопитель подключили или отключили — число строк изменилось
-            if (_tiles.Count != _w.DashSlots) BuildTiles();
-
-            int pts = Points;
-            for (int i = 0; i < _tiles.Count; i++)
-            {
-                Tile t = _tiles[i];
-                DashTileData d = _w.DashTile(i, s, _period);
-                t.Data = d;
-                EnsureSpark(t, d);
-
-                SetText(t.Title, d.Title);
-                SetText(t.Value, d.Value);
-                string col = SeverityColor(d.Pct);
-                if ((t.Value.Tag as string) != col) { t.Value.Tag = col; t.Value.Foreground = Theme.B(col); }
-                SetText(t.Unit, d.Unit);
-                t.Unit.Visibility = d.Unit.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-                SetText(t.Note, d.Note);
-                t.Note.Visibility = d.Note.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-                SetDetail(t.Detail, d.Detail);
-                SetAxis(t);
-
-                t.Spark.Points = pts;
-                t.Spark.SetPeaks(d.Peaks);
-                t.Spark.Set(d.Series, d.Max);
-                if (t.Cores != null) t.Cores.Set(d.Cores);
-            }
-            UpdateVerdict(s);
-            UpdateMinHeight();
+            RefreshDl(s);
         }
+
         static void SetText(TextBlock tb, string text)
         {
             if (tb.Text != text) tb.Text = text;

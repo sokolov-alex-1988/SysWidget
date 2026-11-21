@@ -148,6 +148,7 @@ namespace SysWidget
                 w.Fired = true;
                 w.Last = DateTime.Now;
                 Action<Peripheral> h = PeripheralLow;
+                AlertLog.Add(1, p.Name + ": " + Lang.S("заряд ", "battery ") + p.Battery + "%");
                 if (h != null) h(p);
             }
         }
@@ -193,6 +194,9 @@ namespace SysWidget
                     w.Fired = true;
                     w.Last = DateTime.Now;
                     Action<string, double, double> h = DiskFreeLow;
+                    AlertLog.Add(pct < 5 ? 2 : 1, Lang.S("Диск ", "Disk ") + d.Name.TrimEnd('\\') + Lang.S(": свободно ", ": free ")
+                        + (free / 1073741824.0).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + Lang.S(" ГБ (", " GB (")
+                        + pct.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%)");
                     if (h != null)
                         h(d.Name.TrimEnd('\\'), free / 1073741824.0, pct);
                 }
@@ -225,7 +229,17 @@ namespace SysWidget
             w.Above = 0;   // повтор — только после новых Sustain секунд выше порога
 
             Action<AlertKind, double> h = Raised;
+            AlertLog.Add(1, AlertName(kind) + " " + value.ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+                + "%  ·  " + Lang.S("порог ", "limit ") + Limit(kind).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%");
             if (h != null) h(kind, value);
+        }
+
+        static string AlertName(AlertKind k)
+        {
+            if (k == AlertKind.Ram) return Lang.S("ОЗУ", "RAM");
+            if (k == AlertKind.Cpu) return Lang.S("ЦП", "CPU");
+            if (k == AlertKind.Disk) return Lang.S("Диск", "Disk");
+            return Lang.S("ГП", "GPU");
         }
 
         // ---------------------------------------------------------- настройки

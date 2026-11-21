@@ -55,6 +55,27 @@ namespace SysWidget
 
         string _exePath, _iconPath, _startupLnk, _startLnk;
 
+
+        /// <summary>
+        /// Пиксель-арт: все окна и всплывающие плашки рисуют текст без сглаживания (иначе пиксельный шрифт
+        /// расплывается), а линии и рамки — по границам пикселей. Вместо правки каждого окна подменяем
+        /// значения по умолчанию у типов Window и Popup: свойства наследуются вниз по дереву, и это одно
+        /// место на всё приложение. Вызывать надо до создания первого окна.
+        /// </summary>
+        static void InstallPixelRender()
+        {
+            var inherit = FrameworkPropertyMetadataOptions.Inherits;
+            foreach (Type t in new Type[] { typeof(Window), typeof(System.Windows.Controls.Primitives.Popup) })
+            {
+                System.Windows.Media.TextOptions.TextRenderingModeProperty.OverrideMetadata(t,
+                    new FrameworkPropertyMetadata(System.Windows.Media.TextRenderingMode.Aliased, inherit));
+                System.Windows.Media.TextOptions.TextFormattingModeProperty.OverrideMetadata(t,
+                    new FrameworkPropertyMetadata(System.Windows.Media.TextFormattingMode.Display, inherit));
+                System.Windows.Media.RenderOptions.EdgeModeProperty.OverrideMetadata(t,
+                    new FrameworkPropertyMetadata(System.Windows.Media.EdgeMode.Aliased, inherit));
+            }
+        }
+
         [STAThread]
         public static void Main(string[] args)
         {
@@ -134,8 +155,9 @@ namespace SysWidget
             // настройки вида и палитра — до создания окон, меню и значка: они читают Theme.
             // Тему по умолчанию берём из старого поля state.json, пока prefs.json не создан.
             Prefs.Load(AppPaths.File_("prefs.json"), Theme.NeonFromState(stateFile));
-            Theme.Apply(Prefs.Neon, Prefs.Light);
+            Theme.Apply(Prefs.Neon, Prefs.Light, Prefs.Retro, Prefs.Terminal);
             Theme.ApplyPrefs();
+            if (Theme.Retro || Theme.Terminal) InstallPixelRender();
 
             // ---------- ярлыки ----------
             // Windows связывает окно с приложением только если существует ярлык с
@@ -185,6 +207,10 @@ namespace SysWidget
             _widget.Win.Closed += OnClosed;
             _widget.Win.Show();
             SyncToggleText();       // первый Show не поднимает VisibilityChanged
+
+            // «--dash»: сразу открыть окно мониторинга (для проверки вида без кликов мышью)
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--dash") >= 0)
+                _widget.Win.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)delegate { _widget.ToggleDashboard(); });
 
             // ---------- таймеры ----------
             _timer = new DispatcherTimer();

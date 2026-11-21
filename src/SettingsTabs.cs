@@ -169,9 +169,9 @@ namespace SysWidget
             page.Children.Add(Section(Lang.S("ТЕМА И РАЗМЕРЫ", "THEME AND SIZE")));
 
             page.Children.Add(Line(Lang.S("Тема", "Theme"),
-                Choice(new[] { Lang.S("Неон", "Neon"), Lang.S("Тёмная", "Dark"), Lang.S("Светлая", "Light") },
-                    delegate { return Prefs.Neon ? 0 : (Prefs.Light ? 2 : 1); },
-                    delegate(int i) { Prefs.Neon = i == 0; Prefs.Light = i == 2; Prefs.Save(); })));
+                Choice(new[] { Lang.S("Неон", "Neon"), Lang.S("Тёмная", "Dark"), Lang.S("Светлая", "Light"), Lang.S("Пиксель", "Pixel"), Lang.S("Терминал", "Terminal") },
+                    delegate { return Prefs.Neon ? 0 : (Prefs.Retro ? 3 : (Prefs.Terminal ? 4 : (Prefs.Light ? 2 : 1))); },
+                    delegate(int i) { Prefs.Neon = i == 0; Prefs.Light = i == 2; Prefs.Retro = i == 3; Prefs.Terminal = i == 4; Prefs.Save(); })));
 
             page.Children.Add(Line(Lang.S("Плотность", "Density"),
                 Choice(new[] { Lang.S("Компактно", "Compact"), Lang.S("Обычно", "Normal"), Lang.S("Свободно", "Roomy") },

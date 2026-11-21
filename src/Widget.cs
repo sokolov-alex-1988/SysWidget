@@ -425,8 +425,8 @@ namespace SysWidget
             _brBtnHover = Theme.B(Theme.BtnHover);
             _brBtnBusy = Theme.B(Theme.BtnBusy);
             _brDim = Theme.B(Theme.TextMid);
-            // в неоне цифры красятся в цвет своей метрики; в тёмной — общий цвет
-            _brNetVal = Theme.Neon ? Theme.B(Theme.NetColor) : _brNormal;
+            // в неоне и пиксель-арте цифры красятся в цвет своей метрики; в тёмной и светлой — общий цвет
+            _brNetVal = Theme.ColorByMetric ? Theme.B(Theme.NetColor) : _brNormal;
 
             _card = (Border)XamlReader.Parse(ThemedXaml());
             _scaleXf = new ScaleTransform(1, 1);
@@ -450,8 +450,8 @@ namespace SysWidget
             _barCpu = (Border)_card.FindName("barCpu");
             _barGpu = (Border)_card.FindName("barGpu");
             _barNet = (Border)_card.FindName("barNet");
-            // неон: шкала из сегментов, а не сплошная полоса
-            if (Theme.Neon)
+            // неон и пиксель-арт: шкала из сегментов, а не сплошная полоса
+            if (Theme.ColorByMetric)
             {
                 _barRam.Background = BarFill(Theme.RamColor);
                 _barCpu.Background = BarFill(Theme.CpuColor);
@@ -1284,10 +1284,10 @@ namespace SysWidget
             bars[n - 1] = _barNet;
             _barBlocks = bars;
 
-            // цвет цифр по метрике — только в неоновой теме
+            // цвет цифр по метрике — только в неоне и пиксель-арте
             var vbrushes = new Brush[n];
             for (int i = 0; i < n; i++) vbrushes[i] = _brNormal;
-            if (Theme.Neon)
+            if (Theme.ColorByMetric)
             {
                 vbrushes[0] = Theme.B(Theme.RamColor);
                 vbrushes[1] = Theme.B(Theme.CpuColor);
@@ -1909,7 +1909,7 @@ namespace SysWidget
                     OrderMask(), _vertical ? "true" : "false",
                     _userScale.ToString("0.##", Inv), DiskMask(), DiskAllMask(),
                     Lang.En ? "en" : "ru", _trayAnim ? "true" : "false",
-                    Theme.Neon ? "neon" : (Theme.Light ? "light" : "dark")));
+                    Theme.Neon ? "neon" : (Theme.Retro ? "retro" : (Theme.Terminal ? "terminal" : (Theme.Light ? "light" : "dark")))));
             }
             catch (Exception ex) { ErrorLog.Write("save state", ex); }
         }
@@ -3383,7 +3383,7 @@ namespace SysWidget
         static Brush BarFill(string hex)
         {
             var solid = Theme.B(hex);
-            if (!Theme.Neon) return solid;
+            if (!Theme.ColorByMetric) return solid;
 
             var db = new DrawingBrush();
             db.TileMode = TileMode.Tile;

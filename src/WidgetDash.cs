@@ -40,6 +40,13 @@ namespace SysWidget
         /// <summary>Окно мониторинга открыто.</summary>
         public bool DashboardOpen { get { return _dash != null && _dash.IsOpen; } }
 
+        /// <summary>Открыть окно настроек (кнопка в окне мониторинга).</summary>
+        public void OpenSettings()
+        {
+            Action h = SettingsRequested;
+            if (h != null) h();
+        }
+
         /// <summary>Открыть окно мониторинга или закрыть, если оно уже открыто.</summary>
         public void ToggleDashboard()
         {
